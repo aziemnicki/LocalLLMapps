@@ -143,7 +143,7 @@ async def scrape_flights(url, preferences):
     ]
 
     agent = Agent(
-        task=flight_scrape_task(preferences),
+        task=flight_scrape_task(preferences, url),
         llm=model,
         initial_actions=initial_actions,
         browser=browser,

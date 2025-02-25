@@ -1,9 +1,6 @@
-from langchain_openai import ChatOpenAI
-import openai
-import os
+from langchain_anthropic import ChatAnthropic
 from dotenv import load_dotenv
 
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
 
-model = ChatOpenAI(model="gpt-4o", temperature=0)
+model = ChatAnthropic(model="claude-3-5-sonnet-20241022", temperature=0)

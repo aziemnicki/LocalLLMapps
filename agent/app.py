@@ -1,148 +1,203 @@
-import streamlit as st
-from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor
-import asyncio
+from flask import Flask, request, jsonify
 from flights.google_flight_scraper import get_flight_url, scrape_flights
 from flights.flights import BrightDataAPI
-from config.models import model
+import requests
+import asyncio
+import uuid
+import threading
+from enum import Enum
+from collections import defaultdict
+from waitress import serve
 
-def search_travel_options(origin, destination, check_in, check_out, num_travelers, additional_requirements):
-    """Search for both flights and hotels using threads"""
-    # Initialize API
-    bright_api = BrightDataAPI()
-    
-    def search_flights():
-        try:
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            # Run the async functions in this thread's event loop
-            flight_url = loop.run_until_complete(get_flight_url(
-                origin=origin,
-                destination=destination,
-                start_date=check_in.strftime("%B %d, %Y"),
-                end_date=check_out.strftime("%B %d, %Y")
-            ))
-            
-            if flight_url:
-                return loop.run_until_complete(scrape_flights(flight_url, additional_requirements))
-            return []
-        except Exception as e:
-            st.error(f"Error searching flights: {str(e)}")
-            return []
-        finally:
-            loop.close()
-    
-    def search_hotels():
-        try:
-            return bright_api.search_hotels_sync(
-                location=destination,
-                check_in=check_in.strftime("%B %d, %Y"),
-                check_out=check_out.strftime("%B %d, %Y"),
-                occupancy=str(num_travelers),
-                currency="USD"
-            )
-        except Exception as e:
-            st.error(f"Error searching hotels: {str(e)}")
-            return []
-    
-    # Create placeholders for loading indicators
-    flight_status = st.empty()
-    hotel_status = st.empty()
-    
-    flight_status.text("🔎 Searching for flights...")
-    hotel_status.text("🔎 Searching for hotels...")
-    
-    # Run searches in parallel using threads
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_flights = executor.submit(search_flights)
-        future_hotels = executor.submit(search_hotels)
-        
-        # Wait for both tasks to complete
-        flights = future_flights.result()
-        hotels = future_hotels.result()
-    
-    # Update status indicators
-    flight_status.text("✅ Flight search completed")
-    hotel_status.text("✅ Hotel search completed")
-    
-    return flights, hotels, additional_requirements
+app = Flask(__name__)
 
-def main():
-    st.title("Travel Planning Assistant")
-    
-    # Sidebar for user inputs
-    with st.sidebar:
-        st.header("Travel Requirements")
+# In-memory storage for task results
+task_results = defaultdict(dict)
+# Lock for thread-safe operations on task_results
+task_lock = threading.Lock()
+
+class TaskStatus(Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+def run_async(coro):
+    """Helper function to run async code"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+def update_task_status(task_id, status, data=None, error=None):
+    """Thread-safe update of task status"""
+    with task_lock:
+        if data is not None:
+            task_results[task_id].update({
+                'status': status,
+                'data': data
+            })
+        elif error is not None:
+            task_results[task_id].update({
+                'status': status,
+                'error': error
+            })
+        else:
+            task_results[task_id]['status'] = status
+
+def process_flight_search(task_id, origin, destination, start_date, end_date, preferences):
+    try:
+        # Update status to processing
+        update_task_status(task_id, TaskStatus.PROCESSING.value)
+
+        # Get flight search URL
+        url = run_async(get_flight_url(origin, destination, start_date, end_date))
+        if not url:
+            raise Exception("Failed to generate flight search URL")
+
+        # Scrape flight results
+        flight_results = run_async(scrape_flights(url, preferences))
         
-        origin = st.text_input("Origin City/Airport", "NYC")
-        destination = st.text_input("Destination City", "London")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            check_in = st.date_input(
-                "Check-in Date",
-                min_value=datetime.now().date(),
-                value=datetime.now().date() + timedelta(days=30)
-            )
-        with col2:
-            check_out = st.date_input(
-                "Check-out Date",
-                min_value=check_in,
-                value=check_in + timedelta(days=7)
-            )
-            
-        num_travelers = st.number_input("Number of Travelers", min_value=1, value=2)
-        
-        # Add text area for additional requirements
-        additional_requirements = st.text_area(
-            "Additional Requirements",
-            placeholder="Enter any additional requirements (e.g., 'I prefer morning flights', 'Need a hotel with a pool', 'Budget under $1000')",
-            height=150
+        # Store results
+        update_task_status(
+            task_id, 
+            TaskStatus.COMPLETED.value,
+            data=flight_results
         )
-        
-        search_button = st.button("Search Travel Options")
-    
-    # Main content area
-    if search_button:
-        with st.spinner("Searching for the best travel options..."):
-            # Create a progress bar
-            progress_bar = st.progress(0)
-            
-            # Show searching status
-            status = st.empty()
-            status.text("Initiating search...")
-            progress_bar.progress(20)
-            
-            # Run the search
-            flights, hotels, requirements = search_travel_options(
-                origin, destination, check_in, check_out, num_travelers, additional_requirements
-            )
-            
-            progress_bar.progress(60)
-            status.text("Processing results...")
-            
-            # Display results using the model
-            st.header("Travel Recommendations")
-            
-            response = model.invoke(
-                f"""Summarize the following flight and hotels and give me a nicely formatted output: 
-                Hotels: {hotels} ||| Flights: {flights}. 
-                
-                Then make a recommendation for the best hotel and flight based on this: {additional_requirements}
-                
-                Note: the price of the flight is maximum of the two prices listed, NOT the combined price.
-                """
-            )
-            st.write(response.content)
-            
-            progress_bar.progress(100)
-            status.text("Search completed!")
-            
-            # Clear the progress indicators after completion
-            status.empty()
-            progress_bar.empty()
 
-if __name__ == "__main__":
-    main() 
+    except Exception as e:
+        print(f"Error in flight search task: {str(e)}")
+        update_task_status(
+            task_id,
+            TaskStatus.FAILED.value,
+            error=str(e)
+        )
+
+def process_hotel_search(task_id, location, check_in, check_out, occupancy, currency):
+    try:
+        # Update status to processing
+        update_task_status(task_id, TaskStatus.PROCESSING.value)
+
+        # Create API instance and search for hotels
+        api = BrightDataAPI()
+        with requests.Session() as session:
+            hotels = api.search_hotels(
+                session=session,
+                location=location,
+                check_in=check_in,
+                check_out=check_out,
+                occupancy=occupancy,
+                currency=currency
+            )
+
+        # Store results
+        update_task_status(
+            task_id,
+            TaskStatus.COMPLETED.value,
+            data=hotels
+        )
+
+    except Exception as e:
+        print(f"Error in hotel search task: {str(e)}")
+        update_task_status(
+            task_id,
+            TaskStatus.FAILED.value,
+            error=str(e)
+        )
+
+@app.route('/search_flights', methods=['POST'])
+def search_flights():
+    try:
+        data = request.get_json()
+        
+        # Extract required parameters
+        origin = data.get('origin')
+        destination = data.get('destination')
+        start_date = data.get('start_date').replace(" 0", " ")
+        end_date = data.get('end_date').replace(" 0", " ")
+        preferences = data.get('preferences')
+
+        # Validate required parameters
+        if not all([origin, destination, start_date, end_date]):
+            return jsonify({
+                'error': 'Missing required parameters. Please provide origin, destination, start_date, and end_date'
+            }), 400
+
+        # Generate task ID and store initial status
+        task_id = str(uuid.uuid4())
+        with task_lock:
+            task_results[task_id] = {'status': TaskStatus.PENDING.value}
+
+        # Start background thread
+        thread = threading.Thread(
+            target=process_flight_search,
+            args=(task_id, origin, destination, start_date, end_date, preferences),
+            daemon=True
+        )
+        thread.start()
+        
+        return jsonify({
+            'task_id': task_id,
+            'status': TaskStatus.PENDING.value
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/search_hotels', methods=['POST'])
+def search_hotels():
+    try:
+        data = request.get_json()
+        
+        # Extract required parameters
+        location = data.get('location')
+        check_in = data.get('check_in').replace(" 0", " ")
+        check_out = data.get('check_out').replace(" 0", " ")
+        occupancy = data.get('occupancy', '2')
+        currency = data.get('currency', 'USD')
+        
+        # Validate required parameters
+        if not all([location, check_in, check_out]):
+            return jsonify({
+                'error': 'Missing required parameters. Please provide location, check_in, and check_out dates'
+            }), 400
+
+        # Generate task ID and store initial status
+        task_id = str(uuid.uuid4())
+        with task_lock:
+            task_results[task_id] = {'status': TaskStatus.PENDING.value}
+
+        # Start background thread
+        thread = threading.Thread(
+            target=process_hotel_search,
+            args=(task_id, location, check_in, check_out, occupancy, currency),
+            daemon=True
+        )
+        thread.start()
+        
+        return jsonify({
+            'task_id': task_id,
+            'status': TaskStatus.PENDING.value
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/task_status/<task_id>', methods=['GET'])
+def get_status(task_id):
+    try:
+        with task_lock:
+            result = task_results.get(task_id)
+        if not result:
+            return jsonify({'error': 'Task not found'}), 404
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    # Use waitress instead of Flask's development server
+    serve(app, host='0.0.0.0', port=5000) 

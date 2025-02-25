@@ -5,3 +5,8 @@ langchain
 webdriver-manager
 playwright
 browser-use
+streamlit
+flask
+waitress
+langchain-core
+langchain-community

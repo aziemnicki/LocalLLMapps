@@ -1,12 +1,11 @@
-import aiohttp
+import requests
 from flights.google_flight_scraper import get_flight_url, scrape_flights
 from user_preferences import get_travel_details
 from flights.flights import BrightDataAPI
-import asyncio
 from config.models import model
 
 
-async def main():
+def main():
     travel_requirements = input("Enter your travel requirements: ")
     details = get_travel_details(travel_requirements)
 
@@ -22,25 +21,23 @@ async def main():
     if not all([origin_airport_code, destination_airport_code, start_date, end_date]):
         return
 
-    url = await get_flight_url(
+    url = get_flight_url(
         origin_airport_code, destination_airport_code, start_date, end_date
     )
 
-    # Create API instance outside of the coroutine
+    # Create API instance
     api = BrightDataAPI()
 
-    # Run flight scraping and hotel search in parallel
-    async with aiohttp.ClientSession() as session:
-        flights, hotels = await asyncio.gather(
-            scrape_flights(url, travel_requirements),
-            api.search_hotels(
-                session=session,
-                occupancy="2",
-                currency="USD",
-                check_in=start_date,
-                check_out=end_date,
-                location=destination_city_name,
-            ),
+    # Run flight scraping and hotel search sequentially
+    with requests.Session() as session:
+        flights = scrape_flights(url, travel_requirements)
+        hotels = api.search_hotels(
+            session=session,
+            occupancy="2",
+            currency="USD",
+            check_in=start_date,
+            check_out=end_date,
+            location=destination_city_name,
         )
 
     response = model.invoke(
@@ -56,4 +53,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
