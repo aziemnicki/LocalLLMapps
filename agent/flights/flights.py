@@ -1,6 +1,6 @@
 import os
-import requests
-import time
+import aiohttp
+import asyncio
 from dotenv import load_dotenv
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -20,13 +20,13 @@ class BrightDataAPI:
             "Authorization": f"Bearer {self.api_key}",
         }
 
-    def _poll_results(
-        self, response_id: str, max_retries: int = 10, delay: int = 10
+    async def _poll_results(
+        self, session: aiohttp.ClientSession, response_id: str, max_retries: int = 10, delay: int = 10
     ) -> Optional[Dict]:
         """Generic polling function for any type of search results."""
         for _ in range(max_retries):
             try:
-                response = requests.get(
+                async with session.get(
                     f"{self.BASE_URL}/get_result",
                     params={
                         "customer": self.CUSTOMER_ID,
@@ -34,34 +34,28 @@ class BrightDataAPI:
                         "response_id": response_id,
                     },
                     headers=self.headers,
-                )
+                ) as response:
+                    if response.status == 200:
+                        try:
+                            result = await response.json()
+                            return result
+                        except ValueError as e:
+                            print(f"Failed to parse JSON response: {e}")
+                            print("Raw response:", (await response.text())[:200])
 
-                if response.status_code == 200:
-                    try:
-                        result = response.json()
-                        return result
-                    except ValueError as e:
-                        print(f"Failed to parse JSON response: {e}")
-                        print("Raw response:", response.text[:200])
+                await asyncio.sleep(delay)
 
-                time.sleep(delay)
-
-            except requests.RequestException as e:
+            except Exception as e:
                 print(f"Error polling results: {e}")
 
         return None
 
-    def search_travel(self, url: str, params: Dict[Any, Any] = None) -> Optional[Dict]:
-        """
-        Generic travel search function that can be used for both flights and hotels.
-
-        Args:
-            url: Base URL for the search
-            params: Dictionary of additional parameters like dates, currency, etc.
-        """
+    async def search_travel(
+        self, session: aiohttp.ClientSession, url: str, params: Dict[Any, Any] = None
+    ) -> Optional[Dict]:
+        """Generic travel search function that can be used for both flights and hotels."""
         payload = {"url": url, "brd_json": "json"}
 
-        # Add any additional parameters to the URL if provided
         if params:
             query_params = "&".join(f"{k}={v}" for k, v in params.items())
             if "?" in payload["url"]:
@@ -70,36 +64,36 @@ class BrightDataAPI:
                 payload["url"] += f"?{query_params}"
 
         try:
-            response = requests.post(
+            async with session.post(
                 f"{self.BASE_URL}/req",
                 params={"customer": self.CUSTOMER_ID, "zone": self.ZONE},
                 headers=self.headers,
                 json=payload,
-            )
-            response.raise_for_status()
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                response_id = data.get("response_id")
+                if response_id:
+                    return await self._poll_results(session, response_id)
 
-            response_id = response.json().get("response_id")
-            if response_id:
-                return self._poll_results(response_id)
-
-        except requests.exceptions.HTTPError as http_err:
+        except aiohttp.ClientResponseError as http_err:
             print(f"HTTP error occurred: {http_err}")
-            print(f"Request error response: {response.text}")
         except Exception as err:
             print(f"An error occurred: {err}")
 
         return None
 
-    def search_flights(
-        self, tfs: str, language: str = "en", currency: str = "USD"
+    async def search_flights(
+        self, session: aiohttp.ClientSession, tfs: str, language: str = "en", currency: str = "USD"
     ) -> Optional[Dict]:
         """Specific method for flight searches."""
         url = f"https://www.google.com/travel/flights/search"
         params = {"tfs": tfs, "hl": language, "curr": currency}
-        return self.search_travel(url, params)
+        return await self.search_travel(session, url, params)
 
-    def search_hotels(
+    async def search_hotels(
         self,
+        session: aiohttp.ClientSession,
         location: str = None,
         check_in: str = None,
         check_out: str = None,
@@ -123,21 +117,26 @@ class BrightDataAPI:
         if accommodation_type:
             params["brd_accommodation_type"] = accommodation_type
 
-        return self.search_travel(url, params)
+        return await self.search_travel(session, url, params)
 
 
 # Example usage
-if __name__ == "__main__":
+async def main():
     api = BrightDataAPI()
-    # Example flight search
-    # flight_results = api.search_flights("tfs_params_here", "en", "USD")
+    async with aiohttp.ClientSession() as session:
+        # Example of parallel requests
+        tasks = [
+            api.search_hotels(
+                session,
+                check_in="April 22, 2025",
+                check_out="May 1, 2025",
+                occupancy="2",
+                currency="USD",
+                location="New York"
+            )
+        ]
+        results = await asyncio.gather(*tasks)
+        print(results)
 
-    # Example hotel search
-    hotel_results = api.search_hotels(
-        check_in="April 22, 2025",
-        check_out="May 1, 2025",
-        occupancy="2",
-        currency="USD",
-        location="New York"
-    )
-    print(hotel_results)
+if __name__ == "__main__":
+    asyncio.run(main())

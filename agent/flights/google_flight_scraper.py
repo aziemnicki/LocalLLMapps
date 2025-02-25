@@ -167,9 +167,6 @@ async def get_flight_url(origin, destination, start_date, end_date):
         )
         return url
 
-    except Exception as e:
-        print(f"Main execution error: {str(e)}")
-
     finally:
         print("Closing connection...")
         if "scraper" in locals():

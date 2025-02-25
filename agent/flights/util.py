@@ -7,7 +7,7 @@ flight_scrape_task = lambda preferences: f"""Follow these steps in order:
             a. Click on the flight
             b. On the returning flights page, identify the best (lowest price) return flight
             c. Store both the departing and return flight details
-            d. make sure to store the url and price as well a s currency
+            d. make sure to store the price as well a s currency
 
     3. Collect all important flight details and store them in a structured json format
     """
