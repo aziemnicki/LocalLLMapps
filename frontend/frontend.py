@@ -1,8 +1,9 @@
 import streamlit as st
 from datetime import datetime, timedelta
-from travel_assistant import TravelAssistant
-from travel_summary import TravelSummary
-from api_client import TravelAPIClient
+from ai.travel_assistant import TravelAssistant
+from ai.travel_summary import TravelSummary
+from api.api_client import TravelAPIClient
+from ai.research_assistant import ResearchAssistant
 
 def format_date(date):
     """Convert datetime to string format expected by the API"""
@@ -21,12 +22,16 @@ if 'chat_messages' not in st.session_state:
     st.session_state.chat_messages = []
 if 'summary' not in st.session_state:
     st.session_state.summary = None
+if 'research_assistant' not in st.session_state:
+    st.session_state.research_assistant = ResearchAssistant()
+if 'research_messages' not in st.session_state:
+    st.session_state.research_messages = []
 
 # Main UI code starts here...
 st.title("Travel Search")
 
 # Create main tabs for search form and results
-search_tab, results_tab = st.tabs(["Search", "Results & Planning"])
+search_tab, results_tab, research_tab = st.tabs(["Search", "Results & Planning", "Research"])
 
 with search_tab:
     # Main search form
@@ -191,6 +196,50 @@ with results_tab:
                     st.session_state.chat_messages.append({"role": "assistant", "content": response})
     else:
         st.info("Please complete a search to see results and start planning your trip.")
+
+with research_tab:
+    st.header("Travel Research Assistant")
+    st.markdown("""
+    Use this research assistant to learn more about your destination, local customs, 
+    attractions, and travel tips. This assistant can search the internet for up-to-date information.
+    """)
+    
+    # Chat interface
+    research_container = st.container()
+    with research_container:
+        # Display chat history
+        for message in st.session_state.research_messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        
+        # Show suggested prompts if no messages
+        if not st.session_state.research_messages:
+            st.markdown("### Suggested Research Questions:")
+            suggested_prompts = ResearchAssistant.get_suggested_prompts()
+            cols = st.columns(2)
+            with cols[0]:
+                for prompt in suggested_prompts["column1"]:
+                    st.markdown(f"- {prompt}")
+            with cols[1]:
+                for prompt in suggested_prompts["column2"]:
+                    st.markdown(f"- {prompt}")
+        
+        # Chat input
+        st.markdown("---")
+        if prompt := st.chat_input("Ask about your destination..."):
+            # Add user message to chat history
+            st.session_state.research_messages.append({"role": "user", "content": prompt})
+            with research_container.chat_message("user"):
+                st.markdown(prompt)
+            
+            # Get AI response
+            with research_container.chat_message("assistant"):
+                message_placeholder = st.empty()
+                response = st.session_state.research_assistant.get_response(prompt)
+                message_placeholder.markdown(response)
+            
+            # Add AI response to chat history
+            st.session_state.research_messages.append({"role": "assistant", "content": response})
 
 # Automatically switch to results tab after search
 if hasattr(st.session_state, 'switch_to_results') and st.session_state.switch_to_results:
