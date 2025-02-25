@@ -1,0 +1,7 @@
+python-dotenv
+requests
+openai
+langchain
+webdriver-manager
+playwright
+browser-use
