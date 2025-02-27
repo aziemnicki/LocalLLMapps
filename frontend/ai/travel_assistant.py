@@ -1,12 +1,11 @@
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
 from dotenv import load_dotenv
-from langchain_anthropic import ChatAnthropic
+from ai.models import model
+from ai.context import generate_travel_context_memory
 
 load_dotenv()
 
-
-load_dotenv()
 
 class TravelAssistant:
     def __init__(self, travel_context):
@@ -19,29 +18,11 @@ class TravelAssistant:
         
         # Add travel context to memory
         memory.chat_memory.add_ai_message(
-            f"""I am your travel assistant. I have access to your travel details:
-            - Flight from {self.context['origin']} to {self.context['destination']}
-            - Travel dates: {self.context['start_date']} to {self.context['end_date']}
-            - Number of travelers: {self.context['occupancy']}
-            
-            Flight Details: {self.context['flights']}
-            Hotel Details: {self.context['hotels']}
-            
-            Your preferences: {self.context['preferences']}
-            
-            I can help you:
-            - Create a detailed travel itinerary
-            - Suggest activities and attractions
-            - Provide local transportation advice
-            - Answer questions about your flights and hotel
-            - Give dining recommendations
-            - Offer packing suggestions
-            
-            How can I assist you with your trip planning?"""
+            generate_travel_context_memory(self.context)
         )
         
         return ConversationChain(
-            llm=ChatAnthropic(model="claude-3-5-sonnet-20241022", temperature=0),
+            llm=model,
             memory=memory,
             verbose=True
         )

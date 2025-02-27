@@ -35,24 +35,13 @@ class TravelAPIClient:
 
     def poll_task_status(self, task_id, task_type, progress_container):
         """Poll the task status endpoint until completion or failure"""
-        status_text = progress_container.text(f"Starting {task_type} search...")
-        progress_bar = progress_container.progress(0)
         
-        stages = {
-            'pending': 0,
-            'processing': 0.5,
-            'completed': 1.0,
-            'failed': 1.0
-        }
         
         while True:
             response = requests.get(f"{self.base_url}/task_status/{task_id}")
             if response.status_code == 200:
                 result = response.json()
                 status = result.get("status")
-                
-                progress_bar.progress(stages.get(status, 0))
-                status_text.text(f"{task_type.capitalize()} Search: {status.capitalize()}")
                 
                 if status == "completed":
                     progress_container.success(f"{task_type.capitalize()} search completed!")

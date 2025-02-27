@@ -1,7 +1,7 @@
 import requests
 from flights.google_flight_scraper import get_flight_url, scrape_flights
 from user_preferences import get_travel_details
-from flights.flights import BrightDataAPI
+from backend.flights.hotels import BrightDataAPI
 from config.models import model
 
 

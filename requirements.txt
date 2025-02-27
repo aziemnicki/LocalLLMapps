@@ -15,3 +15,4 @@ chromadb
 pandas
 numpy
 ollama
+langchain-chroma
