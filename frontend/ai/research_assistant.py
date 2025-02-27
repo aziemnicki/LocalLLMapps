@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from ai.models import model
 import json
 import os
+import chromadb
 
 load_dotenv()
 
@@ -17,6 +18,15 @@ class ResearchAssistant:
             model="nomic-embed-text"
         )
     vector_store = None
+    
+    @staticmethod
+    def _clean_metadata_value(value):
+        """Clean metadata values to ensure they are valid types"""
+        if value is None:
+            return ""
+        if isinstance(value, (str, int, float, bool)):
+            return value
+        return str(value)
     
     def __init__(self, context):
         # Initialize the language model
@@ -69,46 +79,50 @@ class ResearchAssistant:
     @classmethod  
     def _initialize_vector_store(cls):
         """Initialize and populate the vector store with restaurant data"""
-        # Add debug prints
         print("Starting vector store initialization...")
+        
+        # Configure Chroma settings
+        client_settings = chromadb.Settings(
+            anonymized_telemetry=False,
+            is_persistent=True
+        )
         
         # Check if vector store already exists
         if os.path.exists("restaurant_db"):
             print("Found existing restaurant_db, loading...")
-            return Chroma(
+            cls.vector_store = Chroma(
                 persist_directory="restaurant_db",
-                embedding_function=cls.embeddings
+                embedding_function=cls.embeddings,
+                client_settings=client_settings
             )
+            return cls.vector_store
         
         # Load restaurant data
         try:
-            # Update the path to be relative to the current file
             current_dir = os.path.dirname(os.path.abspath(__file__))
             data_path = os.path.join(current_dir, '..', 'data', 'thailand_restaurants.json')
             print(f"Loading restaurant data from: {data_path}")
             
             with open(data_path, 'r', encoding='utf-8') as f:
                 restaurants_data = json.load(f)
-                print(f"Successfully loaded {len(restaurants_data)} restaurants")
+                total = len(restaurants_data)
+                print(f"Successfully loaded {total} restaurants")
         except FileNotFoundError as e:
             print(f"Error: Could not find restaurant data file: {e}")
-            restaurants_data = []
+            return None
         except json.JSONDecodeError as e:
             print(f"Error: Invalid JSON in restaurant data: {e}")
-            restaurants_data = []
-        except Exception as e:
-            print(f"Unexpected error loading restaurant data: {e}")
-            restaurants_data = []
-
-        # Debug print for vector store creation
-        print(f"Creating vector store with {len(restaurants_data)} restaurants")
+            return None
         
         # Prepare documents for vector store
         documents = []
         metadatas = []
         
-        for restaurant in restaurants_data:
-            # try:
+        for i, restaurant in enumerate(restaurants_data):
+            # Show progress every 10%
+            if i % (total // 10) == 0:
+                print(f"Processing restaurants: {(i/total)*100:.1f}% complete...")
+            
             # Format opening hours
             open_hours = ""
             if restaurant.get('open_hours'):
@@ -133,30 +147,47 @@ class ResearchAssistant:
             
             documents.append(text)
             metadatas.append({
-                "name": restaurant.get('name'),
-                "category": restaurant.get('category'),
-                "rating": restaurant.get('rating'),
-                "reviews_count": restaurant.get('reviews_count'),
-                "price_range": restaurant.get('price_range')
+                "name": cls._clean_metadata_value(restaurant.get('name')),
+                "category": cls._clean_metadata_value(restaurant.get('category')),
+                "rating": cls._clean_metadata_value(restaurant.get('rating', 0)),
+                "reviews_count": cls._clean_metadata_value(restaurant.get('reviews_count', 0)),
+                "price_range": cls._clean_metadata_value(restaurant.get('price_range'))
             })
-            # except Exception as e:
-            #     print(f"Error processing restaurant {restaurant.get('name', 'unknown')}: {e}")
         
         # Create and persist vector store
         if documents:
-            cls.vector_store = Chroma.from_texts(
-                documents,
-                cls.embeddings,
-                metadatas=metadatas,
-                persist_directory="restaurant_db"
-            )
-            cls.vector_store.persist()
+            print("\nCreating vector store embeddings (this may take a while)...")
+            batch_size = 100
+            for i in range(0, len(documents), batch_size):
+                batch_end = min(i + batch_size, len(documents))
+                print(f"Processing batch {i//batch_size + 1}/{len(documents)//batch_size + 1}...")
+                
+                if i == 0:
+                    # Create initial vector store with first batch
+                    cls.vector_store = Chroma.from_texts(
+                        documents[i:batch_end],
+                        cls.embeddings,
+                        metadatas=metadatas[i:batch_end],
+                        persist_directory="restaurant_db",
+                        client_settings=client_settings
+                    )
+                else:
+                    # Add subsequent batches
+                    cls.vector_store.add_texts(
+                        documents[i:batch_end],
+                        metadatas=metadatas[i:batch_end]
+                    )
+            
+            print("✅ Vector store created and persisted successfully!")
+            print(f"Total restaurants indexed: {len(documents)}")
+            return cls.vector_store
         else:
-            # Create empty vector store if no documents
-            return Chroma(
+            print("No documents to process. Creating empty vector store.")
+            cls.vector_store = Chroma(
                 persist_directory="restaurant_db",
                 embedding_function=cls.embeddings
             )
+            return cls.vector_store
     
     def query_restaurant_data(self, query: str) -> str:
         """Query the vector store for restaurant information"""
