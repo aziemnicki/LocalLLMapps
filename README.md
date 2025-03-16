@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AI Travel Planner 🌎✈️
 
 An intelligent travel planning assistant that helps users plan their trips by finding flights, hotels, restaurants, and providing local insights.
@@ -83,3 +84,6 @@ python app.py
    - Get restaurant recommendations
    - Learn about local customs and travel tips
 
+=======
+# LocalLLMapps
+>>>>>>> 7a1673d9e64fbe6d812adb3b8076c4c87d5805b9
