@@ -1,89 +1,47 @@
-<<<<<<< HEAD
-# AI Travel Planner 🌎✈️
+# YouTube Notes and Multimodal RAG
 
-An intelligent travel planning assistant that helps users plan their trips by finding flights, hotels, restaurants, and providing local insights.
+This repository contains two main components:
 
-## Features
+## 1. YouTube Notes
 
-### 🔍 Smart Travel Search
-- Single-input natural language processing for travel details
-- Intelligent parsing of dates, locations, and preferences
-- Real-time flight and hotel search
-- Progress tracking for search operations
+The `YouTube notes/app.py` script is designed to monitor a specified YouTube playlist and generate summaries of the videos within that playlist. It utilizes the following features:
 
-### 🤖 AI-Powered Assistants
-- **Travel Assistant**: Helps with trip planning and itinerary details
-- **Research Assistant**: Provides local insights and restaurant recommendations
-- Restaurant database with vector search capabilities (only enabled for Thailand currently)
-- Integration with search engines for up-to-date information
+- **Video ID Retrieval**: The script retrieves video IDs from a specified YouTube playlist using the `pytubefix` library.
+- **Transcript Extraction**: It extracts transcripts from the videos using the `youtube_transcript_api`, supporting multiple languages.
+- **Chunking**: The transcripts are split into manageable chunks based on a specified maximum duration.
+- **Summarization**: Each chunk is summarized using the Gemma-3 model via the `ollama` library, producing concise summaries relevant to data science and AI.
+- **Markdown File Creation**: The generated summaries are saved as markdown files in a specified output directory.
 
-### 🏨 Comprehensive Results
-- Flight options and pricing
-- Hotel recommendations
-- Local restaurant suggestions with detailed information:
-  - Ratings and reviews
-  - Opening hours
-  - Location and contact details
-  - Price ranges
-  - Available services
+### Configuration
 
-### 💬 Interactive Chat Interface
-- Natural conversation with AI assistants
-- Suggested prompts for easy starting points
-- Context-aware responses based on your travel plans
-- Rich formatting for clear information display
+- `MODEL_NAME`: The name of the model to be used for summarization (default is "gemma3").
+- `CHECK_INTERVAL`: The interval at which the script checks for new videos (default is 10 minutes).
+- `OUTPUT_DIR`: The directory where markdown files are saved.
 
-## Technical Stack
+### Usage
 
-- **Frontend**: Streamlit
-- **Language Models**: Ollama/Claude
-- **Vector Store**: ChromaDB
-- **Embeddings**: nomic-embed-text
-- **Search**: DuckDuckGo API
-- **Data Storage**: JSON + Vector Database
-- **Web Data (Realtime, Datasets, Scraping)**: BrightData
+To run the script, ensure you have the necessary libraries installed and execute it in a Python environment.
 
-## Getting Started
+## 2. Multimodal RAG
 
-1. **Install Dependencies**
+The `Multimodal RAG/app.py` script serves as an AI assistant that processes both text and images. Key features include:
+
+- **Image Processing**: Users can upload images, which are converted to base64 format for processing.
+- **Chat Interface**: The assistant provides a chat interface using Streamlit, allowing users to interact with the AI model.
+- **Session Management**: The application maintains session states for text and image messages, enabling a smooth user experience.
+- **Error Handling**: The script includes error handling to manage issues during model queries or image processing.
+
+### Configuration
+
+- The application is configured to use the Gemma-3 model for generating responses and summaries.
+
+### Usage
+
+To run the assistant, ensure you have Streamlit installed and execute the script in a Python environment.
+
+## Installation
+
+To install the required packages, run:
+
 ```bash
 pip install -r requirements.txt
-```
-
-2. **Environment Setup**
-```bash
-# Create a .env file with necessary API keys and configurations
-cp sample.env .env
-```
-
-3. **Initialize the Application**
-```bash
-cd frontend
-streamlit run frontend.py
-```
-
-4. **Run the Backend**
-```bash
-cd backend
-python app.py
-```
-
-## Usage
-
-1. **Enter Travel Details**
-   - Use natural language to describe your trip
-   - Example: "I want to travel to Bangkok from New York from July 1st to July 10th"
-
-2. **View Results**
-   - Check flight options and pricing
-   - Browse hotel recommendations
-   - Explore local restaurants
-
-3. **Get Local Insights**
-   - Chat with the Research Assistant about local attractions
-   - Get restaurant recommendations
-   - Learn about local customs and travel tips
-
-=======
-# LocalLLMapps
->>>>>>> 7a1673d9e64fbe6d812adb3b8076c4c87d5805b9
